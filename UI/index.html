@@ -17,7 +17,7 @@
 <body>
 <div id="wrap"><canvas id="game" width="2732" height="2048"></canvas></div>
 
-<script src="game-core.js"></script>
+<script src="game-core.js?v=2"></script>
 <script>
 const CW=2732, CH=2048;
 const cv=document.getElementById('game'), ctx=cv.getContext('2d');
@@ -27,8 +27,9 @@ const COLS=16, ROWS=12;
 const GX=410, GY=380, CELLW=119.6, CELLH=134;
 
 // ---- config (GOD MODE — tuned by simulation) ----
-const TOTAL_TIME=180;          // seconds (3 min)
-const REGEN_PERIOD=16, REGEN_CAP=18, REGEN_STOP_ELAPSED=150, REGEN_PAIRS=8, REGEN_WARN=5;
+const TOTAL_TIME=210;          // seconds (3.5 min)
+const REGEN_PERIOD=19, REGEN_CAP=18, REGEN_STOP_ELAPSED=180, REGEN_PAIRS=7, REGEN_WARN=5;
+const INITIAL_ICE=8, REGEN_ICE=2;    // frozen tiles at start / added per regen wave
 const SCORE_PAIR=100, COMBO_WINDOW=3, WIN_TIME_BONUS=50;
 const CONNECT_DUR=0.20, GRAVITY_DUR=0.22;
 
@@ -52,18 +53,27 @@ TYPES.forEach(t=>{ const im=new Image();
 
 // ===================== GAME STATE =====================
 let board, state, timeLeft, elapsed, score, combo, lastEatAt;
-let regenCount, nextRegenElapsed, regenTargets;
+let regenCount, nextRegenElapsed, regenTargets, regenFlipped;
 let hintLeft, shuffleLeft, hintPair, hintShownAt;
 let selected, anim, buttonRects=[], overlayBtn=null;
+let frozen, gravityDir;
 let lastTs=0;
 
 function emptyBoard(){ return Array.from({length:ROWS},()=>Array(COLS).fill(null)); }
+function emptyFrozen(){ return Array.from({length:ROWS},()=>Array(COLS).fill(false)); }
+function iceCount(){ let n=0; for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++) if(frozen[r][c]) n++; return n; }
 
 function newGame(){
   board=GameCore.generateBoard(ROWS,COLS,GAME_TYPES);
+  frozen=emptyFrozen(); gravityDir={dy:1,dx:1};
+  // freeze a handful of random filled cells (keep solvable)
+  const cells=[]; for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++) cells.push([r,c]);
+  for(let i=cells.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [cells[i],cells[j]]=[cells[j],cells[i]]; }
+  for(let i=0;i<INITIAL_ICE&&i<cells.length;i++) frozen[cells[i][0]][cells[i][1]]=true;
+  if(!GameCore.hasAnyMove(board,ROWS,COLS,frozen)) frozen=emptyFrozen();
   state='playing';
   timeLeft=TOTAL_TIME; elapsed=0; score=0; combo=0; lastEatAt=-99;
-  regenCount=0; nextRegenElapsed=REGEN_PERIOD; regenTargets=[];
+  regenCount=0; nextRegenElapsed=REGEN_PERIOD; regenTargets=[]; regenFlipped=false;
   hintLeft=1; shuffleLeft=1; hintPair=null; hintShownAt=-99;
   selected=null; anim=null; overlayBtn=null;
 }
@@ -71,21 +81,46 @@ function newGame(){
 function cellCenter(r,c){ return {x:GX+c*CELLW+CELLW/2, y:GY+r*CELLH+CELLH/2}; }
 function tilesLeft(){ let n=0; for(const row of board) for(const t of row) if(t) n++; return n; }
 
-// ---- dual gravity with per-tile from/to for animation (mirrors GameCore.applyGravity) ----
+// ---- dual gravity (direction-aware) with per-tile from/to for animation; carries frozen ----
 function gravityMoves(){
+  const dy=gravityDir.dy, dx=gravityDir.dx;
   const objs=[];
-  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++) if(board[r][c]) objs.push({type:board[r][c],fromR:r,fromC:c,r,c});
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++) if(board[r][c]) objs.push({type:board[r][c],frozen:frozen[r][c],fromR:r,fromC:c,r,c});
+  // vertical pass: pack along dy, preserving order
   for(let c=0;c<COLS;c++){
     const col=objs.filter(o=>o.c===c).sort((a,b)=>a.r-b.r);
-    let rr2=ROWS-1; for(let i=col.length-1;i>=0;i--) col[i].r=rr2--;
+    for(let i=0;i<col.length;i++) col[i].r = dy>0 ? (ROWS-col.length+i) : i;
   }
+  // horizontal pass: pack along dx, preserving order
   for(let r=0;r<ROWS;r++){
     const row=objs.filter(o=>o.r===r).sort((a,b)=>a.c-b.c);
-    let cc=COLS-1; for(let i=row.length-1;i>=0;i--) row[i].c=cc--;
+    for(let i=0;i<row.length;i++) row[i].c = dx>0 ? (COLS-row.length+i) : i;
   }
-  const nb=emptyBoard();
-  for(const o of objs) nb[o.r][o.c]=o.type;
-  return {nb,objs};
+  const nb=emptyBoard(), nf=emptyFrozen();
+  for(const o of objs){ nb[o.r][o.c]=o.type; nf[o.r][o.c]=o.frozen; }
+  return {nb,nf,objs};
+}
+function applyGravityInstant(){ const {nb,nf}=gravityMoves(); board=nb; frozen=nf; }
+function openCornerSort(a,b){
+  const ar=gravityDir.dy>0?a.r:ROWS-1-a.r, br=gravityDir.dy>0?b.r:ROWS-1-b.r;
+  const ac=gravityDir.dx>0?a.c:COLS-1-a.c, bc=gravityDir.dx>0?b.c:COLS-1-b.c;
+  return (ar-br)||(ac-bc);
+}
+function flipGravity(){
+  const dirs=[{dy:1,dx:1},{dy:1,dx:-1},{dy:-1,dx:1},{dy:-1,dx:-1}].filter(d=>!(d.dy===gravityDir.dy&&d.dx===gravityDir.dx));
+  gravityDir=dirs[Math.floor(Math.random()*dirs.length)];
+  applyGravityInstant();
+}
+function shuffleBoard(){
+  const positions=[], pairs=[];
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++) if(board[r][c]){ positions.push([r,c]); pairs.push({t:board[r][c],f:frozen[r][c]}); }
+  for(let attempt=0;attempt<200;attempt++){
+    for(let i=pairs.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [pairs[i],pairs[j]]=[pairs[j],pairs[i]]; }
+    const nb=emptyBoard(), nf=emptyFrozen();
+    for(let i=0;i<positions.length;i++){ nb[positions[i][0]][positions[i][1]]=pairs[i].t; nf[positions[i][0]][positions[i][1]]=pairs[i].f; }
+    board=nb; frozen=nf;
+    if(positions.length===0||GameCore.hasAnyMove(board,ROWS,COLS,frozen)) break;
+  }
 }
 
 // ===================== INPUT =====================
@@ -97,6 +132,7 @@ function pickCell(x,y){
 
 function tryMatch(a,b){
   if(a.r===b.r&&a.c===b.c) return;
+  if(frozen[a.r][a.c]||frozen[b.r][b.c]){ selected={...b}; return; }   // ice can't be matched
   if(board[a.r][a.c]==null||board[a.r][a.c]!==board[b.r][b.c]){ selected={...b}; return; }
   const path=GameCore.findPath(board,ROWS,COLS,a,b);
   if(!path){ selected={...b}; return; }
@@ -121,7 +157,7 @@ function onPointerDown(e){
   for(const b of buttonRects){ if(hit(b,x,y)){ b.action(); return; } }
   if(state!=='playing'||anim) return;
   const cell=pickCell(x,y);
-  if(!cell||!board[cell.r][cell.c]) { selected=null; return; }
+  if(!cell||!board[cell.r][cell.c]||frozen[cell.r][cell.c]) { selected=null; return; }
   if(selected && selected.r===cell.r && selected.c===cell.c){ selected=null; return; }
   if(!selected){ selected=cell; return; }
   tryMatch(selected,cell);
@@ -139,35 +175,38 @@ function doFullscreen(){
 }
 function doHint(){
   if(state!=='playing'||anim||hintLeft<=0) return;
-  const p=GameCore.findHint(board,ROWS,COLS);
+  const p=GameCore.findHint(board,ROWS,COLS,frozen);
   if(p){ hintPair=p; hintShownAt=elapsed; hintLeft--; }
 }
 function doShuffle(){
   if(state!=='playing'||anim||shuffleLeft<=0) return;
-  board=GameCore.shuffle(board,ROWS,COLS);
-  board=GameCore.applyGravity(board,ROWS,COLS);
+  shuffleBoard(); applyGravityInstant();
   shuffleLeft--; selected=null; hintPair=null;
 }
 
 function settleAfterGravity(){
   if(tilesLeft()===0){ win(); return; }
-  if(!GameCore.hasAnyMove(board,ROWS,COLS)){          // §5.5 deadlock -> free auto-shuffle
-    board=GameCore.shuffle(board,ROWS,COLS);
-    board=GameCore.applyGravity(board,ROWS,COLS);
+  if(!GameCore.hasAnyMove(board,ROWS,COLS,frozen)){     // deadlock -> thaw all ice, then free auto-shuffle
+    for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++) frozen[r][c]=false;
+    if(!GameCore.hasAnyMove(board,ROWS,COLS,frozen)){ shuffleBoard(); applyGravityInstant(); }
   }
 }
 
 function doRegen(){
   const empties=[];
   for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++) if(!board[r][c]) empties.push({r,c});
-  empties.sort((a,b)=> a.r-b.r || a.c-b.c);            // prefer top-left
+  empties.sort(openCornerSort);                        // prefer the open corner (opposite gravity)
   if(empties.length < REGEN_PAIRS*2){ lose('overflow'); return; }
   const slots=empties.slice(0,REGEN_PAIRS*2);
   const bag=[];
   for(let i=0;i<REGEN_PAIRS;i++){ const t=GAME_TYPES[Math.floor(Math.random()*GAME_TYPES.length)]; bag.push(t,t); }
   for(let i=bag.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [bag[i],bag[j]]=[bag[j],bag[i]]; }
   slots.forEach((s,i)=> board[s.r][s.c]=bag[i]);
-  if(!GameCore.hasAnyMove(board,ROWS,COLS)){ board=GameCore.shuffle(board,ROWS,COLS); }
+  // freeze a couple of freshly spawned tiles
+  const iceIdx=[...slots.keys()];
+  for(let i=iceIdx.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [iceIdx[i],iceIdx[j]]=[iceIdx[j],iceIdx[i]]; }
+  for(let i=0;i<REGEN_ICE&&i<iceIdx.length;i++){ const s=slots[iceIdx[i]]; frozen[s.r][s.c]=true; }
+  if(!GameCore.hasAnyMove(board,ROWS,COLS,frozen)){ shuffleBoard(); }
 }
 
 function win(){ state='win'; score+=Math.floor(timeLeft)*WIN_TIME_BONUS; }
@@ -180,17 +219,20 @@ function update(dt){
   timeLeft-=dt; elapsed+=dt;
   if(timeLeft<=0){ timeLeft=0; if(tilesLeft()>0){ lose('time'); return; } else { win(); return; } }
 
-  // regen warning targets (5s before)
-  regenTargets=[];
   const regenPending = regenCount<REGEN_CAP && nextRegenElapsed<=REGEN_STOP_ELAPSED;
-  if(regenPending && (nextRegenElapsed-elapsed)<=REGEN_WARN){
+  const inWarn = regenPending && (nextRegenElapsed-elapsed)<=REGEN_WARN;
+  // flip gravity once per wave at the start of the warning window (telegraphed reshape)
+  if(inWarn && !regenFlipped && !anim){ flipGravity(); regenFlipped=true; }
+  // warning highlight: the open-corner cells that will be filled
+  regenTargets=[];
+  if(inWarn){
     const empties=[];
     for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++) if(!board[r][c]) empties.push({r,c});
-    empties.sort((a,b)=> a.r-b.r || a.c-b.c);
+    empties.sort(openCornerSort);
     regenTargets=empties.slice(0,REGEN_PAIRS*2);
   }
-  if(regenPending && elapsed>=nextRegenElapsed){
-    doRegen(); regenCount++; nextRegenElapsed+=REGEN_PERIOD; regenTargets=[];
+  if(regenPending && elapsed>=nextRegenElapsed && !anim){
+    doRegen(); regenCount++; nextRegenElapsed+=REGEN_PERIOD; regenTargets=[]; regenFlipped=false;
   }
 
   // animations
@@ -198,11 +240,17 @@ function update(dt){
     anim.t+=dt;
     if(anim.t>=anim.dur){
       if(anim.kind==='connect'){
+        const cleared=[anim.a,anim.b];
         board[anim.a.r][anim.a.c]=null; board[anim.b.r][anim.b.c]=null;
-        const {nb,objs}=gravityMoves();
-        anim={kind:'gravity',t:0,dur:GRAVITY_DUR,objs,nb};
+        // thaw ice orthogonally adjacent to a cleared tile
+        for(const cell of cleared) for(const [dr,dc] of [[1,0],[-1,0],[0,1],[0,-1]]){
+          const r=cell.r+dr,c=cell.c+dc;
+          if(r>=0&&r<ROWS&&c>=0&&c<COLS&&frozen[r][c]) frozen[r][c]=false;
+        }
+        const {nb,nf,objs}=gravityMoves();
+        anim={kind:'gravity',t:0,dur:GRAVITY_DUR,objs,nb,nf};
       } else {
-        board=anim.nb; anim=null; settleAfterGravity();
+        board=anim.nb; frozen=anim.nf; anim=null; settleAfterGravity();
       }
     }
   }
@@ -213,10 +261,19 @@ function ease(t){ return t<0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }
 
 function tileShadow(x,y){ ctx.fillStyle=C.maroon; rr(x+3,y+6,CELLW,CELLH,12); ctx.fill(); }
 function drawSpriteAt(type,x,y){ const im=sprites[type]; if(im&&im.complete&&im.naturalWidth) ctx.drawImage(im,x,y,CELLW+0.8,CELLH+0.8); }
+function drawFrost(x,y){
+  ctx.save();
+  rr(x+2,y+2,CELLW-4,CELLH-4,10); ctx.fillStyle='rgba(150,222,255,0.5)'; ctx.fill();
+  ctx.lineWidth=5; ctx.strokeStyle='rgba(235,250,255,0.95)'; ctx.stroke();
+  ctx.restore();
+}
 
 function drawBoardStatic(skip){
   for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){ if(!board[r][c]) continue; if(skip&&skip(r,c)) continue; tileShadow(GX+c*CELLW,GY+r*CELLH); }
-  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){ if(!board[r][c]) continue; if(skip&&skip(r,c)) continue; drawSpriteAt(board[r][c],GX+c*CELLW,GY+r*CELLH); }
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++){ if(!board[r][c]) continue; if(skip&&skip(r,c)) continue;
+    drawSpriteAt(board[r][c],GX+c*CELLW,GY+r*CELLH);
+    if(frozen[r][c]) drawFrost(GX+c*CELLW,GY+r*CELLH);
+  }
 }
 
 function drawRegenWarn(){
@@ -273,6 +330,10 @@ function drawHUD(){
   const regenPending = regenCount<REGEN_CAP && nextRegenElapsed<=REGEN_STOP_ELAPSED;
   let rtxt = regenPending ? ('Đợt mới: '+Math.max(0,Math.ceil(nextRegenElapsed-elapsed))+'s') : 'Hết sinh ô';
   outlinedText(rtxt,410,cy+58,38, regenPending&&(nextRegenElapsed-elapsed)<=REGEN_WARN?C.green:C.white,'left');
+  // gravity direction + ice count (left of the bar)
+  const arrow = gravityDir.dy>0 ? (gravityDir.dx>0?'↘':'↙') : (gravityDir.dx>0?'↗':'↖');
+  outlinedText('Dồn '+arrow, 70, cy-2, 52, regenFlipped?C.green:'#ffd23f', 'left');
+  outlinedText('Băng: '+iceCount(), 70, cy+54, 40, '#9fe4ff', 'left');
 }
 
 function goldButton(label,cx,cy,w,h,kind,enabled){
@@ -343,7 +404,7 @@ function render(){
   if(anim&&anim.kind==='gravity'){
     const e=ease(Math.min(1,anim.t/anim.dur));
     for(const o of anim.objs){ const fx=GX+o.fromC*CELLW, fy=GY+o.fromR*CELLH, tx=GX+o.c*CELLW, ty=GY+o.r*CELLH; tileShadow(fx+(tx-fx)*e,fy+(ty-fy)*e); }
-    for(const o of anim.objs){ const fx=GX+o.fromC*CELLW, fy=GY+o.fromR*CELLH, tx=GX+o.c*CELLW, ty=GY+o.r*CELLH; drawSpriteAt(o.type,fx+(tx-fx)*e,fy+(ty-fy)*e); }
+    for(const o of anim.objs){ const fx=GX+o.fromC*CELLW, fy=GY+o.fromR*CELLH, tx=GX+o.c*CELLW, ty=GY+o.r*CELLH; const px=fx+(tx-fx)*e, py=fy+(ty-fy)*e; drawSpriteAt(o.type,px,py); if(o.frozen) drawFrost(px,py); }
   } else {
     drawRegenWarn();
     drawBoardStatic(null);

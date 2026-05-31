@@ -78,6 +78,43 @@ test('applyGravity: single row packs to the right', () => {
   assert.deepStrictEqual(out, G(['.AB']));
 });
 
+test('applyGravity: direction up+left packs tiles to the top-left', () => {
+  const g = G([
+    '.A',
+    'B.',
+  ]); // A at (0,1), B at (1,0)
+  const out = core.applyGravity(g, 2, 2, { dy: -1, dx: -1 });
+  assert.deepStrictEqual(out, G([
+    'BA',
+    '..',
+  ]));
+});
+
+test('applyGravity: direction down+left packs to the bottom-left', () => {
+  const g = G([
+    'A.',
+    '.B',
+  ]);
+  const out = core.applyGravity(g, 2, 2, { dy: 1, dx: -1 });
+  assert.deepStrictEqual(out, G([
+    '..',
+    'AB',
+  ]));
+});
+
+test('hasAnyMove: ignores frozen tiles (no move when only pair is frozen)', () => {
+  const g = G(['AA']);
+  const frozen = [[true, false]]; // (0,0) frozen
+  assert.strictEqual(core.hasAnyMove(g, 1, 2, frozen), false);
+  assert.strictEqual(core.hasAnyMove(g, 1, 2), true); // without frozen arg
+});
+
+test('findHint: skips frozen tiles', () => {
+  const g = G(['AA']);
+  assert.strictEqual(core.findHint(g, 1, 2, [[true, false]]), null);
+  assert.ok(core.findHint(g, 1, 2)); // without frozen arg
+});
+
 test('hasAnyMove: true when a connectable same-type pair exists', () => {
   const g = G([
     'AA',

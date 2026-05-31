@@ -80,37 +80,46 @@
     return null;
   }
 
-  // Dual gravity: every remaining tile falls DOWN, then slides RIGHT (fixed direction).
-  // Returns a new grid; does not mutate the input.
-  function applyGravity(grid, rows, cols) {
+  // Dual gravity: every remaining tile falls along dir.dy (down=+1/up=-1) then slides
+  // along dir.dx (right=+1/left=-1). dir defaults to down+right. Returns a new grid.
+  function applyGravity(grid, rows, cols, dir) {
+    const dy = (dir && dir.dy < 0) ? -1 : 1;
+    const dx = (dir && dir.dx < 0) ? -1 : 1;
     const g = grid.map(row => row.slice());
     for (let c = 0; c < cols; c++) {
       const stack = [];
       for (let r = 0; r < rows; r++) if (g[r][c] != null) stack.push(g[r][c]);
       for (let r = 0; r < rows; r++) g[r][c] = null;
-      let rr = rows - 1;
-      for (let i = stack.length - 1; i >= 0; i--) g[rr--][c] = stack[i];
+      if (dy === 1) { let rr = rows - 1; for (let i = stack.length - 1; i >= 0; i--) g[rr--][c] = stack[i]; }
+      else { let rr = 0; for (let i = 0; i < stack.length; i++) g[rr++][c] = stack[i]; }
     }
     for (let r = 0; r < rows; r++) {
       const items = [];
       for (let c = 0; c < cols; c++) if (g[r][c] != null) items.push(g[r][c]);
       for (let c = 0; c < cols; c++) g[r][c] = null;
-      let cc = cols - 1;
-      for (let i = items.length - 1; i >= 0; i--) g[r][cc--] = items[i];
+      if (dx === 1) { let cc = cols - 1; for (let i = items.length - 1; i >= 0; i--) g[r][cc--] = items[i]; }
+      else { let cc = 0; for (let i = 0; i < items.length; i++) g[r][cc++] = items[i]; }
     }
     return g;
   }
 
-  // True if at least one connectable same-type pair exists (i.e. not a deadlock).
-  function hasAnyMove(grid, rows, cols) {
+  // Collect matchable positions by type, skipping frozen cells (frozen[r][c] truthy).
+  function matchableByType(grid, rows, cols, frozen) {
     const byType = new Map();
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
       const t = grid[r][c];
       if (t == null) continue;
+      if (frozen && frozen[r] && frozen[r][c]) continue;
       if (!byType.has(t)) byType.set(t, []);
       byType.get(t).push({ r, c });
     }
-    for (const list of byType.values()) {
+    return byType;
+  }
+
+  // True if at least one connectable same-type pair exists (i.e. not a deadlock).
+  // Frozen cells (optional) are excluded as match candidates.
+  function hasAnyMove(grid, rows, cols, frozen) {
+    for (const list of matchableByType(grid, rows, cols, frozen).values()) {
       for (let i = 0; i < list.length; i++)
         for (let j = i + 1; j < list.length; j++)
           if (findPath(grid, rows, cols, list[i], list[j])) return true;
@@ -118,16 +127,9 @@
     return false;
   }
 
-  // Return one connectable pair [a, b] or null (used by Hint).
-  function findHint(grid, rows, cols) {
-    const byType = new Map();
-    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-      const t = grid[r][c];
-      if (t == null) continue;
-      if (!byType.has(t)) byType.set(t, []);
-      byType.get(t).push({ r, c });
-    }
-    for (const list of byType.values()) {
+  // Return one connectable pair [a, b] or null (used by Hint). Skips frozen cells.
+  function findHint(grid, rows, cols, frozen) {
+    for (const list of matchableByType(grid, rows, cols, frozen).values()) {
       for (let i = 0; i < list.length; i++)
         for (let j = i + 1; j < list.length; j++)
           if (findPath(grid, rows, cols, list[i], list[j])) return [list[i], list[j]];
