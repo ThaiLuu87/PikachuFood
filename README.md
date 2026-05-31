@@ -19,9 +19,10 @@ Hoặc serve thẳng thư mục `UI/`.
 - Lưới **16×12 = 192 ô (96 cặp)**, 24 loại đồ ăn, ban đầu kín hoàn toàn.
 - Nối 2 ô cùng hình bằng đường **≤ 3 đoạn thẳng** (≤ 2 lần gấp khúc), đi qua ô trống hoặc **vành ngoài lưới**.
 - **Gravity kép:** sau mỗi lần ăn, các ô dồn xuống rồi sang phải (về góc dưới-phải).
-- **Regen:** mỗi 45s sinh thêm 6 cặp vào vùng trống (cap 6 đợt, dừng sau giây 360). Tới kỳ regen mà hết chỗ → **thua** (tràn lưới).
+- **Regen:** mỗi 16s sinh thêm 8 cặp vào vùng trống (tới 18 đợt, dừng sau giây 150). Tới kỳ regen mà hết chỗ → **thua** (tràn lưới).
 - **Auto-shuffle:** khi không còn nước đi mà lưới chưa trống, tự xáo lại miễn phí.
-- **Thắng:** dọn sạch lưới trước khi hết 8 phút. **Thua:** hết giờ còn ô, hoặc tràn lưới.
+- **Thắng:** dọn sạch lưới trước khi hết **3 phút**. **Thua:** hết giờ còn ô, hoặc tràn lưới.
+- ⚠️ **God Mode:** calibrate để chỉ thắng nếu giữ nhịp **~1.1 giây/cặp** suốt 3 phút dưới áp lực regen dồn dập.
 - Power-up: **Hint** (1 lần), **Shuffle** (1 lần). Điểm: +100/cặp, có combo + thưởng thời gian.
 
 Chi tiết spec: [`PRD_Pikachu_Boss_Round.md`](PRD_Pikachu_Boss_Round.md).

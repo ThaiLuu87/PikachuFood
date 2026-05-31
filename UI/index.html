@@ -26,9 +26,9 @@ const cv=document.getElementById('game'), ctx=cv.getContext('2d');
 const COLS=16, ROWS=12;
 const GX=410, GY=380, CELLW=119.6, CELLH=134;
 
-// ---- config (from PRD §12) ----
-const TOTAL_TIME=480;          // seconds
-const REGEN_PERIOD=45, REGEN_CAP=6, REGEN_STOP_ELAPSED=360, REGEN_PAIRS=6, REGEN_WARN=5;
+// ---- config (GOD MODE — tuned by simulation) ----
+const TOTAL_TIME=180;          // seconds (3 min)
+const REGEN_PERIOD=16, REGEN_CAP=18, REGEN_STOP_ELAPSED=150, REGEN_PAIRS=8, REGEN_WARN=5;
 const SCORE_PAIR=100, COMBO_WINDOW=3, WIN_TIME_BONUS=50;
 const CONNECT_DUR=0.20, GRAVITY_DUR=0.22;
 
