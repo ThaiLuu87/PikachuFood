@@ -26,6 +26,7 @@ Hoặc serve thẳng thư mục `UI/`.
 - **Thắng:** dọn sạch lưới trước khi hết **4 phút**. **Thua:** hết giờ còn ô, hoặc tràn lưới.
 - ⚠️ **God Mode:** calibrate (mô phỏng) để chỉ thắng nếu giữ nhịp **~1.5 giây/cặp** suốt màn dưới áp lực regen + đổi hướng + băng.
 - Power-up: **Hint** (1 lần), **Shuffle** (1 lần). Điểm: +100/cặp, có combo + thưởng thời gian.
+- **High score:** lưu kỷ lục cá nhân (localStorage) — chơi lại để phá kỷ lục của chính mình.
 
 Chi tiết spec: [`PRD_Pikachu_Boss_Round.md`](PRD_Pikachu_Boss_Round.md).
 

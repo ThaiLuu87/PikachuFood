@@ -57,7 +57,15 @@ let regenCount, nextRegenElapsed, regenTargets, regenFlipped;
 let hintLeft, shuffleLeft, hintPair, hintShownAt;
 let selected, anim, buttonRects=[], overlayBtn=null;
 let frozen, gravityDir;
+let highScore=0, newRecord=false;
 let lastTs=0;
+
+const HS_KEY='godmode_highscore';
+function loadHighScore(){ try{ highScore=parseInt(localStorage.getItem(HS_KEY),10)||0; }catch(e){ highScore=0; } }
+function recordScore(){
+  if(score>highScore){ highScore=score; newRecord=true; try{ localStorage.setItem(HS_KEY,String(highScore)); }catch(e){} }
+  else newRecord=false;
+}
 
 function emptyBoard(){ return Array.from({length:ROWS},()=>Array(COLS).fill(null)); }
 function emptyFrozen(){ return Array.from({length:ROWS},()=>Array(COLS).fill(false)); }
@@ -75,7 +83,7 @@ function newGame(){
   timeLeft=TOTAL_TIME; elapsed=0; score=0; combo=0; lastEatAt=-99;
   regenCount=0; nextRegenElapsed=REGEN_PERIOD; regenTargets=[]; regenFlipped=false;
   hintLeft=1; shuffleLeft=1; hintPair=null; hintShownAt=-99;
-  selected=null; anim=null; overlayBtn=null;
+  selected=null; anim=null; overlayBtn=null; newRecord=false;
 }
 
 function cellCenter(r,c){ return {x:GX+c*CELLW+CELLW/2, y:GY+r*CELLH+CELLH/2}; }
@@ -168,11 +176,6 @@ cv.addEventListener('pointerdown',onPointerDown,{passive:false});
 // ===================== ACTIONS =====================
 function doRestart(){ newGame(); }
 function doPause(){ if(state==='playing'){state='paused';} else if(state==='paused'){state='playing';lastTs=performance.now();} }
-function doFullscreen(){
-  const fsEl=document.fullscreenElement||document.webkitFullscreenElement;
-  if(!fsEl){ const el=document.documentElement, req=el.requestFullscreen||el.webkitRequestFullscreen||el.webkitRequestFullScreen; if(req) req.call(el); }
-  else { const ex=document.exitFullscreen||document.webkitExitFullscreen; if(ex) ex.call(document); }
-}
 function doHint(){
   if(state!=='playing'||anim||hintLeft<=0) return;
   const p=GameCore.findHint(board,ROWS,COLS,frozen);
@@ -209,8 +212,8 @@ function doRegen(){
   if(!GameCore.hasAnyMove(board,ROWS,COLS,frozen)){ shuffleBoard(); }
 }
 
-function win(){ state='win'; score+=Math.floor(timeLeft)*WIN_TIME_BONUS; }
-function lose(reason){ state='lose'; loseReason=reason; }
+function win(){ state='win'; score+=Math.floor(timeLeft)*WIN_TIME_BONUS; recordScore(); }
+function lose(reason){ state='lose'; loseReason=reason; recordScore(); }
 let loseReason='time';
 
 // ===================== UPDATE =====================
@@ -334,6 +337,7 @@ function drawHUD(){
   const arrow = gravityDir.dy>0 ? (gravityDir.dx>0?'↘':'↙') : (gravityDir.dx>0?'↗':'↖');
   outlinedText('Dồn '+arrow, 70, cy-2, 52, regenFlipped?C.green:'#ffd23f', 'left');
   outlinedText('Băng: '+iceCount(), 70, cy+54, 40, '#9fe4ff', 'left');
+  outlinedText('★ Best: '+highScore, 40, 90, 46, '#ffd23f', 'left');
 }
 
 function goldButton(label,cx,cy,w,h,kind,enabled){
@@ -365,7 +369,6 @@ function drawButtons(){
   add('',587,'pause',doPause,true);
   add('HINT'+(hintLeft?'':' ·'),719,'text',doHint,hintLeft>0);
   add('SHUFFLE',851,'text',doShuffle,shuffleLeft>0);
-  add('FULL',983,'text',doFullscreen,true);
 }
 
 function drawOverlay(){
@@ -376,9 +379,13 @@ function drawOverlay(){
   if(state==='win'){ title='THẮNG!'; sub='Điểm: '+score; }
   else if(state==='lose'){ title='THUA'; sub=loseReason==='overflow'?'Lưới bị tràn':'Hết giờ'; }
   else { title='TẠM DỪNG'; sub=''; }
-  outlinedText(title,CW/2,CH/2-120,150,state==='win'?C.green:C.white,'center');
-  if(sub) outlinedText(sub,CW/2,CH/2+10,64,C.white,'center');
-  const by=CH/2+150;
+  outlinedText(title,CW/2,CH/2-150,150,state==='win'?C.green:C.white,'center');
+  if(sub) outlinedText(sub,CW/2,CH/2-20,64,C.white,'center');
+  if(state!=='paused'){
+    if(newRecord) outlinedText('🏆 KỶ LỤC MỚI!',CW/2,CH/2+50,58,'#ffd23f','center');
+    else outlinedText('Best: '+highScore,CW/2,CH/2+50,52,'#9fe4ff','center');
+  }
+  const by=CH/2+170;
   const label= state==='paused'?'TIẾP TỤC':'CHƠI LẠI';
   goldButton(label,CW/2,by,360,110,'text',true);
   overlayBtn={cx:CW/2,cy:by,w:360,h:110,action: state==='paused'?doPause:doRestart};
@@ -432,6 +439,7 @@ window.addEventListener('resize',resize);
 let started=false;
 function start(){
   if(started) return; started=true;
+  loadHighScore();
   newGame(); resize(); lastTs=performance.now();
   requestAnimationFrame(frame);
 }
