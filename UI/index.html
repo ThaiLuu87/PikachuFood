@@ -132,6 +132,11 @@ cv.addEventListener('pointerdown',onPointerDown,{passive:false});
 // ===================== ACTIONS =====================
 function doRestart(){ newGame(); }
 function doPause(){ if(state==='playing'){state='paused';} else if(state==='paused'){state='playing';lastTs=performance.now();} }
+function doFullscreen(){
+  const fsEl=document.fullscreenElement||document.webkitFullscreenElement;
+  if(!fsEl){ const el=document.documentElement, req=el.requestFullscreen||el.webkitRequestFullscreen||el.webkitRequestFullScreen; if(req) req.call(el); }
+  else { const ex=document.exitFullscreen||document.webkitExitFullscreen; if(ex) ex.call(document); }
+}
 function doHint(){
   if(state!=='playing'||anim||hintLeft<=0) return;
   const p=GameCore.findHint(board,ROWS,COLS);
@@ -299,6 +304,7 @@ function drawButtons(){
   add('',587,'pause',doPause,true);
   add('HINT'+(hintLeft?'':' ·'),719,'text',doHint,hintLeft>0);
   add('SHUFFLE',851,'text',doShuffle,shuffleLeft>0);
+  add('FULL',983,'text',doFullscreen,true);
 }
 
 function drawOverlay(){
