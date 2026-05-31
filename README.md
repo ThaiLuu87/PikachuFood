@@ -19,7 +19,7 @@ Hoặc serve thẳng thư mục `UI/`.
 - Lưới **16×12 = 192 ô (96 cặp)**, 24 loại đồ ăn, ban đầu kín hoàn toàn.
 - Nối 2 ô cùng hình bằng đường **≤ 3 đoạn thẳng** (≤ 2 lần gấp khúc), đi qua ô trống hoặc **vành ngoài lưới**.
 - **Gravity kép:** sau mỗi lần ăn, các ô dồn xuống rồi sang phải (về góc dưới-phải).
-- **Regen:** mỗi 24s sinh thêm 7 cặp vào vùng trống (tới 18 đợt, dừng sau giây 200). Tới kỳ regen mà hết chỗ → **thua** (tràn lưới).
+- **Regen:** mỗi 24s sinh thêm tối đa 7 cặp vào vùng trống (chỉ sinh vừa số ô trống; tới 18 đợt, dừng sau giây 200). Chỉ **thua (tràn lưới)** khi lưới đầy hoàn toàn lúc tới kỳ regen.
 - **Đổi hướng gravity:** mỗi đợt regen, hướng dồn đổi sang 1 góc khác (↘ ↙ ↗ ↖) — lưới reshape bất ngờ, có mũi tên báo hướng + 5s telegraph.
 - **Ô băng (ice):** một số ô đóng băng (phủ xanh) **không nối được**; tan khi bạn ăn 1 cặp có ô nằm sát nó. Đầu màn ~8 ô, mỗi regen thêm ~2.
 - **Auto-shuffle:** khi không còn nước đi mà lưới chưa trống → tan hết băng + tự xáo lại miễn phí.
